@@ -7,11 +7,9 @@
 #   🔹 Сейф-режим, лимиты и задержки от бана
 
 from .. import loader, utils
-import asyncio, time, random, logging
+import asyncio, time, random
 from telethon.tl.functions.messages import GetDialogFiltersRequest
 from telethon.tl.types import DialogFilter, Peer
-
-logger = logging.getLogger(__name__)
 
 @loader.tds
 class UniversalMailingMod(loader.Module):
@@ -73,7 +71,6 @@ class UniversalMailingMod(loader.Module):
         await self.client.send_message("me", self.strings["loading"])
 
     async def _get_chats_from_folders(self):
-        """Берём все включённые чаты из выбранных папок"""
         res = await self.client(GetDialogFiltersRequest())
         chats = []
         for f in res.filters:
@@ -88,16 +85,13 @@ class UniversalMailingMod(loader.Module):
 
     @loader.command()
     async def msgo(self, message):
-        """Запуск рассылки: .msgo <время> <интервал> <текст>"""
         if self.active:
             await utils.answer(message, "❗ Рассылка уже активна")
             return
-
         args = utils.get_args_raw(message)
         if not args:
             await utils.answer(message, self.strings["args_error"])
             return
-
         try:
             args = args.split(" ", 2)
             duration = int(args[0])
@@ -106,37 +100,30 @@ class UniversalMailingMod(loader.Module):
         except:
             await utils.answer(message, self.strings["num_error"])
             return
-
         chats = await self._get_chats_from_folders()
         if not chats:
             await utils.answer(message, self.strings["no_chats"])
             return
-
         self.active = True
         self.sent = 0
         self.errors = 0
-
         await utils.answer(message, self.strings["start"].format(len(chats), interval))
-
         end_time = time.time() + duration
         while self.active and time.time() < end_time:
             await self._send_to_chats(chats, text)
             if self.active and time.time() < end_time:
                 await asyncio.sleep(interval)
-
         if self.active:
             await utils.answer(message, self.strings["done"].format(self.sent))
         self.active = False
 
     @loader.command()
     async def msstop(self, message):
-        """Остановка рассылки"""
         self.active = False
         await utils.answer(message, self.strings["stop"])
 
     @loader.command()
     async def msfadd(self, message):
-        """Добавить папку: .msfadd <id>"""
         try:
             folder_id = int(utils.get_args_raw(message))
         except:
@@ -150,7 +137,6 @@ class UniversalMailingMod(loader.Module):
 
     @loader.command()
     async def msfdel(self, message):
-        """Удалить папку: .msfdel <id>"""
         try:
             folder_id = int(utils.get_args_raw(message))
         except:
@@ -164,7 +150,6 @@ class UniversalMailingMod(loader.Module):
 
     @loader.command()
     async def msflist(self, message):
-        """Список папок"""
         if not self.config["ms_folders"]:
             await utils.answer(message, "ℹ️ Нет добавленных папок")
             return
@@ -174,14 +159,12 @@ class UniversalMailingMod(loader.Module):
 
     @loader.command()
     async def msstats(self, message):
-        """Статистика"""
         status = self.strings["protection_on"] if self.config["ms_protection"] else self.strings["protection_off"]
         stats = self.strings["stats"].format(self.sent, self.errors, self.hourly_count)
         await utils.answer(message, stats + "\n" + self.strings["protection"].format(status))
 
     @loader.command()
     async def msmode(self, message):
-        """Режим защиты"""
         self.config["ms_protection"] = not self.config["ms_protection"]
         status = self.strings["protection_on"] if self.config["ms_protection"] else self.strings["protection_off"]
         await utils.answer(message, self.strings["protection"].format(status))
@@ -207,8 +190,7 @@ class UniversalMailingMod(loader.Module):
         except Exception as e:
             self.errors += 1
             if "Too Many Requests" in str(e) and self.config["ms_protection"]:
-                wait = random.randint(45, 180)
-                await asyncio.sleep(wait)
+                await asyncio.sleep(random.randint(45, 180))
                 return await self._safe_send(peer, text)
 
     def _check_limits(self):

@@ -1,0 +1,73 @@
+# meta developer: neko_mochi
+from .. import loader, utils
+from telethon.tl.functions.messages import GetDialogFiltersRequest
+from telethon.tl.types import DialogFilter
+import logging
+
+logger = logging.getLogger(__name__)
+
+class FoldersInfoMod(loader.Module):
+    """Получает инфу о папках (чат-фильтрах)"""
+    strings = {
+        "name": "FoldersInfo",
+        "no_filters": "😿 У тебя нет папок!",
+        "filter_info": "📂 <b>{title}</b> (ID: <code>{fid}</code>)\n😺 Эмодзи: {emoji}\n📌 Закреплено: {pinned}\n➕ Включено: {included}\n➖ Исключено: {excluded}\n",
+        "filter_peers": "📁 Папка <b>{title}</b> (ID: <code>{fid}</code>) — список peer'ов:\n\n<b>Закреплённые:</b>\n{pinned}\n\n<b>Включено:</b>\n{included}\n\n<b>Исключено:</b>\n{excluded}",
+        "need_id": "Укажи ID папки, например: <code>.folder 1</code>",
+        "bad_id": "Неверный ID: <code>{arg}</code>",
+        "not_found": "Папка с ID <code>{fid}</code> не найдена."
+    }
+
+    async def folderscmd(self, message):
+        """Показать список всех папок"""
+        await utils.answer(message, "<b>Запрашиваю папки...</b>")
+        filters = await self.client(GetDialogFiltersRequest())
+        if not filters:
+            return await utils.answer(message, self.strings["no_filters"])
+
+        out = ""
+        for f in filters:
+            if isinstance(f, DialogFilter):
+                out += self.strings["filter_info"].format(
+                    title=f.title or "Без названия",
+                    fid=f.id,
+                    emoji=getattr(f, "emoticon", "—") or "—",
+                    pinned=len(getattr(f, "pinned_peers", []) or []),
+                    included=len(getattr(f, "include_peers", []) or []),
+                    excluded=len(getattr(f, "exclude_peers", []) or []),
+                )
+                out += "\n"
+        await utils.answer(message, out)
+
+    async def foldercmd(self, message):
+        """.folder <id> — показать сырые peer'ы внутри папки (pinned/include/exclude)"""
+        arg = utils.get_args_raw(message)
+        if not arg:
+            return await utils.answer(message, self.strings["need_id"])
+        try:
+            fid = int(arg.strip())
+        except Exception:
+            return await utils.answer(message, self.strings["bad_id"].format(arg=arg))
+
+        filters = await self.client(GetDialogFiltersRequest())
+        target = None
+        for f in filters:
+            if isinstance(f, DialogFilter) and getattr(f, "id", None) == fid:
+                target = f
+                break
+
+        if not target:
+            return await utils.answer(message, self.strings["not_found"].format(fid=fid))
+
+        # Покажем "сырые" представления peer-ов — безопасно и без лишних запросов
+        pinned = "\n".join([repr(x) for x in (getattr(target, "pinned_peers", []) or [])]) or "— пусто"
+        included = "\n".join([repr(x) for x in (getattr(target, "include_peers", []) or [])]) or "— пусто"
+        excluded = "\n".join([repr(x) for x in (getattr(target, "exclude_peers", []) or [])]) or "— пусто"
+
+        await utils.answer(message, self.strings["filter_peers"].format(
+            title=target.title or "Без названия",
+            fid=fid,
+            pinned=pinned,
+            included=included,
+            excluded=excluded
+        ))

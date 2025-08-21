@@ -71,9 +71,16 @@ class UniversalMailingMod(loader.Module):
         for f in getattr(res, "filters", []):
             folder_id = getattr(f, "id", None)
             if folder_id in self.config["ms_folders"]:
-                for p in getattr(f, "include_peers", []) + getattr(f, "pinned_peers", []):
-                    chats.append(p)
-        return list(set(chats))
+                chats.extend(getattr(f, "include_peers", []) + getattr(f, "pinned_peers", []))
+        # уникальные по ID
+        seen = set()
+        unique_chats = []
+        for c in chats:
+            chat_id = getattr(c, 'channel_id', getattr(c, 'user_id', None))
+            if chat_id and chat_id not in seen:
+                seen.add(chat_id)
+                unique_chats.append(c)
+        return unique_chats
 
     @loader.command()
     async def msgo(self, message):

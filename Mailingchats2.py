@@ -1,19 +1,14 @@
 # meta developer: @LidF1x
 # meta name: UniversalMailing
-# meta desc: |
-#   📂 Универсальная рассылка по папкам Telegram
-#   🔹 Добавляй папки по ID
-#   🔹 Рассылка во все включённые чаты
-#   🔹 Сейф-режим, лимиты и задержки от бана
+# meta desc: Универсальная рассылка по папкам Telegram без лишних зависимостей
 
 from .. import loader, utils
 import asyncio, time, random
 from telethon.tl.functions.messages import GetDialogFiltersRequest
-from telethon.tl.types import DialogFilter, Peer
 
 @loader.tds
 class UniversalMailingMod(loader.Module):
-    """Универсальная рассылка по папкам Telegram"""
+    """Универсальная рассылка по папкам Telegram без установки зависимостей"""
     
     strings = {
         "name": "UniversalMailing",
@@ -73,21 +68,20 @@ class UniversalMailingMod(loader.Module):
     async def _get_chats_from_folders(self):
         res = await self.client(GetDialogFiltersRequest())
         chats = []
-        for f in res.filters:
-            if not isinstance(f, DialogFilter):
-                continue
-            if f.id in self.config["ms_folders"]:
-                peers = (f.pinned_peers or []) + (f.include_peers or [])
-                for p in peers:
-                    if isinstance(p, Peer):
-                        chats.append(p)
+        for f in getattr(res, "filters", []):
+            folder_id = getattr(f, "id", None)
+            if folder_id in self.config["ms_folders"]:
+                for p in getattr(f, "include_peers", []) + getattr(f, "pinned_peers", []):
+                    chats.append(p)
         return list(set(chats))
 
     @loader.command()
     async def msgo(self, message):
+        """Запуск рассылки: .msgo <время> <интервал> <текст>"""
         if self.active:
             await utils.answer(message, "❗ Рассылка уже активна")
             return
+
         args = utils.get_args_raw(message)
         if not args:
             await utils.answer(message, self.strings["args_error"])
@@ -100,19 +94,23 @@ class UniversalMailingMod(loader.Module):
         except:
             await utils.answer(message, self.strings["num_error"])
             return
+
         chats = await self._get_chats_from_folders()
         if not chats:
             await utils.answer(message, self.strings["no_chats"])
             return
+
         self.active = True
         self.sent = 0
         self.errors = 0
         await utils.answer(message, self.strings["start"].format(len(chats), interval))
+
         end_time = time.time() + duration
         while self.active and time.time() < end_time:
             await self._send_to_chats(chats, text)
             if self.active and time.time() < end_time:
                 await asyncio.sleep(interval)
+
         if self.active:
             await utils.answer(message, self.strings["done"].format(self.sent))
         self.active = False
@@ -174,24 +172,18 @@ class UniversalMailingMod(loader.Module):
         for peer in chats:
             if not self.active:
                 break
-            await self._safe_send(peer, text)
-
-    async def _safe_send(self, peer, text):
-        try:
-            if self.config["ms_protection"]:
-                delay = random.uniform(2.5, 6.0)
-                if time.time() - self.last_send < 10:
-                    delay += random.uniform(1.0, 3.0)
-                await asyncio.sleep(delay)
-            await self.client.send_message(peer, text)
-            self.sent += 1
-            self.hourly_count += 1
-            self.last_send = time.time()
-        except Exception as e:
-            self.errors += 1
-            if "Too Many Requests" in str(e) and self.config["ms_protection"]:
-                await asyncio.sleep(random.randint(45, 180))
-                return await self._safe_send(peer, text)
+            try:
+                if self.config["ms_protection"]:
+                    delay = random.uniform(2.5, 6.0)
+                    if time.time() - self.last_send < 10:
+                        delay += random.uniform(1.0, 3.0)
+                    await asyncio.sleep(delay)
+                await self.client.send_message(peer, text)
+                self.sent += 1
+                self.hourly_count += 1
+                self.last_send = time.time()
+            except Exception:
+                self.errors += 1
 
     def _check_limits(self):
         now = time.time()

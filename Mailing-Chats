@@ -21,7 +21,8 @@ class FoldersInfoMod(loader.Module):
     async def folderscmd(self, message):
         """Показать список всех папок"""
         await utils.answer(message, "<b>Запрашиваю папки...</b>")
-        filters = await self.client(GetDialogFiltersRequest())
+        res = await self.client(GetDialogFiltersRequest())
+        filters = res.filters
         if not filters:
             return await utils.answer(message, self.strings["no_filters"])
 
@@ -49,7 +50,9 @@ class FoldersInfoMod(loader.Module):
         except Exception:
             return await utils.answer(message, self.strings["bad_id"].format(arg=arg))
 
-        filters = await self.client(GetDialogFiltersRequest())
+        res = await self.client(GetDialogFiltersRequest())
+        filters = res.filters
+
         target = None
         for f in filters:
             if isinstance(f, DialogFilter) and getattr(f, "id", None) == fid:
@@ -59,7 +62,6 @@ class FoldersInfoMod(loader.Module):
         if not target:
             return await utils.answer(message, self.strings["not_found"].format(fid=fid))
 
-        # Покажем "сырые" представления peer-ов — безопасно и без лишних запросов
         pinned = "\n".join([repr(x) for x in (getattr(target, "pinned_peers", []) or [])]) or "— пусто"
         included = "\n".join([repr(x) for x in (getattr(target, "include_peers", []) or [])]) or "— пусто"
         excluded = "\n".join([repr(x) for x in (getattr(target, "exclude_peers", []) or [])]) or "— пусто"

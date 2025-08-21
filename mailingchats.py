@@ -11,8 +11,7 @@ import asyncio
 import time
 import random
 import logging
-import re
-from telethon.tl.types import Message, PeerChannel, PeerChat, PeerUser
+from telethon.tl.types import Message, PeerChannel, PeerChat, PeerUser, DialogFilter
 from telethon.tl.functions.messages import GetDialogFiltersRequest
 
 logger = logging.getLogger(__name__)
@@ -88,9 +87,12 @@ class MailingFoldersMod(loader.Module):
         await self.client.send_message("me", self.strings["loading"])
 
     async def _get_chats_from_folders(self):
-        filters = await self.client(GetDialogFiltersRequest())
+        """Собираем чаты только из пользовательских папок (DialogFilter)"""
+        res = await self.client(GetDialogFiltersRequest())
         chats = []
-        for f in filters.filters:
+        for f in res.filters:
+            if not isinstance(f, DialogFilter):  # игнорируем системные папки
+                continue
             if f.id in self.config["ms_folders"]:
                 peers = (f.pinned_peers or []) + (f.include_peers or [])
                 for p in peers:
@@ -113,7 +115,7 @@ class MailingFoldersMod(loader.Module):
         try:
             args = args.split(" ", 2)
             duration = int(args[0])
-            interval = max(int(args[1]), 15)
+            interval = max(int(args[1]), 5)
             text = args[2]
         except:
             await utils.answer(message, self.strings["num_error"])

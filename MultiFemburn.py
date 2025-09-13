@@ -2,69 +2,78 @@ from .. import loader, utils
 import aiohttp
 import asyncio
 import random
-import string
 
 @loader.tds
 class MultiFemburnTGMod(loader.Module):
-    """Мультипоиск и отправка артов e621 по тегам (без сохранения на диск)"""
+    """Отправка артов e621 по тегам (указывать через ; и количество)"""
 
     strings = {"name": "MultiFemburnTG"}
 
     def __init__(self):
-        # Теги можно менять под себя
-        self.tags = ["femboy", "catboy", "soft_male"]
         self.running = False
 
     async def multifemburncmd(self, message):
-        """Запускает одновременную отправку артов по тегам"""
-        if self.running:
-            await message.edit("⚠️ Уже запущено!")
+        """Использование: .multifemburn тэг;тэг;тэг количество"""
+        args = utils.get_args_raw(message).split()
+        if len(args) < 2:
+            await message.edit("❌ Используй: `.multifemburn femboy;catboy 5`")
+            return
+
+        tags = args[0].split(";")
+        try:
+            count = int(args[1])
+        except ValueError:
+            await message.edit("❌ Количество должно быть числом")
             return
 
         self.running = True
-        await message.edit(f"🧦 Запущена отправка артов для тегов: {', '.join(self.tags)}")
+        await message.edit(f"🧦 Отправляю {count} артов по тегам: {', '.join(tags)}")
 
-        for tag in self.tags:
-            asyncio.create_task(self._send_tag(message, tag))
+        asyncio.create_task(self._send_posts(message, tags, count))
 
-    async def _send_tag(self, message, tag):
+    async def _send_posts(self, message, tags, count):
         headers = {"User-Agent": "HikkaBot/1.0 by Lidik"}
+        sent = 0
 
-        while self.running:
-            url = f"https://e621.net/posts.json?tags={tag}+order:random&limit=3"
+        async with aiohttp.ClientSession() as session:
+            while self.running and sent < count:
+                for tag in tags:
+                    if sent >= count or not self.running:
+                        break
 
-            async with aiohttp.ClientSession() as session:
-                try:
-                    async with session.get(url, headers=headers) as resp:
-                        if resp.status != 200:
-                            await asyncio.sleep(60)
-                            continue
-                        data = await resp.json()
-                        posts = data.get("posts", [])
+                    url = f"https://e621.net/posts.json?tags={tag}+order:random&limit=1"
 
-                        for post in posts:
-                            file_url = post.get("file", {}).get("url")
-                            if not file_url:
+                    try:
+                        async with session.get(url, headers=headers) as resp:
+                            if resp.status != 200:
+                                await asyncio.sleep(10)
                                 continue
 
-                            # Отправляем файл прямо в ТГ
-                            try:
-                                await message.client.send_file(
-                                    message.chat_id,
-                                    file_url,
-                                    caption=f"🎨 Тег: {tag}"
-                                )
-                            except Exception:
-                                continue
+                            data = await resp.json()
+                            posts = data.get("posts", [])
 
-                            await asyncio.sleep(random.randint(10, 20))  # пауза между файлами
+                            for post in posts:
+                                file_url = post.get("file", {}).get("url")
+                                if not file_url:
+                                    continue
 
-                except Exception:
-                    await asyncio.sleep(30)
+                                try:
+                                    await message.client.send_file(
+                                        message.chat_id,
+                                        file_url,
+                                        caption=f"🎨 Тег: {tag}"
+                                    )
+                                    sent += 1
+                                except Exception:
+                                    continue
 
-            await asyncio.sleep(random.randint(40, 90))  # пауза между раундами
+                                await asyncio.sleep(random.randint(5, 10))  # пауза
+                    except Exception:
+                        await asyncio.sleep(5)
+
+        await message.respond("✅ Отправка завершена.")
 
     async def stopfemburncmd(self, message):
-        """Остановить мультифембой"""
+        """Остановить отправку"""
         self.running = False
-        await message.edit("🛑 Отправка артов остановлена.")
+        await message.edit("🛑 Отправка остановлена.")

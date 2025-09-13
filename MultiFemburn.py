@@ -1,44 +1,36 @@
-from .. import loader
+from .. import loader, utils
 import aiohttp
 import asyncio
-import os
 import random
 import string
-import datetime
 
 @loader.tds
-class MultiFemburnMod(loader.Module):
-    """Мультифлудер по e621 тегам (SSD-у плохо, но красиво!)"""
+class MultiFemburnTGMod(loader.Module):
+    """Мультипоиск и отправка артов e621 по тегам (без сохранения на диск)"""
 
-    strings = {"name": "MultiFemburn"}
+    strings = {"name": "MultiFemburnTG"}
 
     def __init__(self):
-        self.tags = ["femboy", "catboy", "soft_male"]  # Можешь редактировать теги по вкусу
-        self.base_path = "/Heroku/heroku/e621_art"
+        # Теги можно менять под себя
+        self.tags = ["femboy", "catboy", "soft_male"]
         self.running = False
 
     async def multifemburncmd(self, message):
-        """Запускает одновременную закачку артов по нескольким тегам"""
+        """Запускает одновременную отправку артов по тегам"""
         if self.running:
             await message.edit("⚠️ Уже запущено!")
             return
 
         self.running = True
-        await message.edit(f"🧦 Мультифембой-флуд запущен для: {', '.join(self.tags)}")
+        await message.edit(f"🧦 Запущена отправка артов для тегов: {', '.join(self.tags)}")
 
         for tag in self.tags:
-            asyncio.create_task(self._flood_tag(tag))
+            asyncio.create_task(self._send_tag(message, tag))
 
-    async def _flood_tag(self, tag):
+    async def _send_tag(self, message, tag):
         headers = {"User-Agent": "HikkaBot/1.0 by Lidik"}
 
         while self.running:
-            now = datetime.datetime.now().strftime("%Y-%m-%d")
-            folder = os.path.join(self.base_path, tag, now)
-            os.makedirs(folder, exist_ok=True)
-            open(os.path.join(folder, ".hidden"), "a").close()
-            open(os.path.join(folder, ".nomedia"), "a").close()
-
             url = f"https://e621.net/posts.json?tags={tag}+order:random&limit=3"
 
             async with aiohttp.ClientSession() as session:
@@ -55,14 +47,15 @@ class MultiFemburnMod(loader.Module):
                             if not file_url:
                                 continue
 
-                            ext = file_url.split(".")[-1]
-                            fname = f"{tag}_{''.join(random.choices(string.ascii_letters + string.digits, k=6))}.{ext}"
-                            fpath = os.path.join(folder, fname)
-
-                            async with session.get(file_url) as f:
-                                content = await f.read()
-                                with open(fpath, "wb") as out:
-                                    out.write(content)
+                            # Отправляем файл прямо в ТГ
+                            try:
+                                await message.client.send_file(
+                                    message.chat_id,
+                                    file_url,
+                                    caption=f"🎨 Тег: {tag}"
+                                )
+                            except Exception:
+                                continue
 
                             await asyncio.sleep(random.randint(10, 20))  # пауза между файлами
 
@@ -74,4 +67,4 @@ class MultiFemburnMod(loader.Module):
     async def stopfemburncmd(self, message):
         """Остановить мультифембой"""
         self.running = False
-        await message.edit("🛑 Фембой-флуд остановлен.")
+        await message.edit("🛑 Отправка артов остановлена.")
